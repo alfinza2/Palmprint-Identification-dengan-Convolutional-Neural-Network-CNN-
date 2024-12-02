@@ -1,0 +1,169 @@
+<!doctype html>
+<html class="no-js" lang="">
+
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>Image Classification</title>
+    <meta name="description" content="Image Classification">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <style>
+        /* Custom styles can be added here */
+        .container {
+            margin-top: 20px;
+        }
+
+        #video-container {
+            position: relative;
+            width: 100%;
+        }
+
+        #video {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        #snap {
+            display: block;
+            margin: 10px auto;
+        }
+
+        #inputCanvas {
+            display: none;
+        }
+
+        #outputCanvas {
+            width: 100%;
+            height: auto;
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h4>Input Image</h4>
+                    </div>
+                    <div class="card-body">
+                        <form action="/submit" method="post" enctype="multipart/form-data">
+                            <div class="form-group">
+                                <label for="file-input">File input</label>
+                                <input type="file" id="file-input" name="my_image" class="form-control-file">
+                            </div>
+                            <button type="submit" class="btn btn-primary">Submit</button>
+                        </form>
+                        <hr>
+                        <h4>Or capture image using webcam:</h4>
+                        <div id="video-container">
+                            <video id="video" autoplay></video>
+                            <button id="snap" class="btn btn-primary mt-2">Capture</button>
+                        </div>
+                        <canvas id="inputCanvas"></canvas>
+                        <canvas id="outputCanvas"></canvas>
+                        <form id="webcam-form" action="/submit_webcam" method="post" enctype="multipart/form-data"
+                            style="display:none;">
+                            <input type="hidden" id="webcam_image" name="webcam_image">
+                            <button type="submit" class="btn btn-primary mt-2">Submit</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h4>Classification Result</h4>
+                    </div>
+                    <div class="card-body text-center">
+                        {% if prediction %}
+                        <h2>Predicted ID: {{ prediction }}</h2>
+                        <img src="{{ img_path }}" alt="Hand Thumbnail">
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+    <!-- MediaPipe Hands -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+
+    <script>
+        const video = document.getElementById('video');
+        const inputCanvas = document.getElementById('inputCanvas');
+        const outputCanvas = document.getElementById('outputCanvas');
+        const snap = document.getElementById('snap');
+        const webcamForm = document.getElementById('webcam-form');
+        const webcamImageInput = document.getElementById('webcam_image');
+        const context = inputCanvas.getContext('2d');
+        const outputContext = outputCanvas.getContext('2d');
+
+        // Access the camera
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            navigator.mediaDevices.getUserMedia({ video: true })
+                .then(function (stream) {
+                    video.srcObject = stream;
+                    video.play();
+                })
+                .catch(function (error) {
+                    console.error('Error accessing the camera:', error);
+                });
+        }
+
+        // Trigger photo capture
+        snap.addEventListener('click', function () {
+            inputCanvas.width = video.videoWidth;
+            inputCanvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0, inputCanvas.width, inputCanvas.height);
+            var dataURL = inputCanvas.toDataURL('image/png');
+            webcamImageInput.value = dataURL;
+            webcamForm.style.display = 'block';
+        });
+
+        // MediaPipe Hands setup
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        hands.onResults(onResults);
+
+        const camera = new Camera(video, {
+            onFrame: async () => {
+                await hands.send({ image: video });
+            },
+            width: 640,
+            height: 480
+        });
+        camera.start();
+
+        function onResults(results) {
+            outputContext.save();
+            outputContext.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
+            outputContext.drawImage(results.image, 0, 0, outputCanvas.width, outputCanvas.height);
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                for (const landmarks of results.multiHandLandmarks) {
+                    drawConnectors(outputContext, landmarks, Hands.HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 2 });
+                    drawLandmarks(outputContext, landmarks, { color: '#FF0000', lineWidth: 1 });
+                }
+            }
+            outputContext.restore();
+        }
+    </script>
+</body>
+
+</html>
